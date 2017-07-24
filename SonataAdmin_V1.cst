@@ -1,0 +1,979 @@
+<%------------------------------------------------------------------------------------------
+* Author: Victor Lude?o Blanco 
+* Description: This template will generate standard CRUD stored procedures for a given 
+*   database table.
+------------------------------------------------------------------------------------------%>
+<%@ CodeTemplate Debug="True" Language="C#" Inherits="CodeSmith.BaseTemplates.SqlCodeTemplate" TargetLanguage="T-SQL"
+	Description="Generates standard CRUD procedures based on a database table schema." %>
+<%-- Context --%>
+<%@ Property Name="SourceDatabase" Type="SchemaExplorer.DatabaseSchema" Category="1. Context" Description="Database that the stored procedures should be based on." %>
+
+<%-- Context original --%>
+
+<%@ Property Name="SourceTable" Type="SchemaExplorer.TableSchema" Category="3. Context"
+	Description="Table that the stored procedures should be based on." %>
+
+<%@ Property Name="Transaccion" Type="System.String" Category="1. Context"
+	Description="Numero de Transaccion." Default="832" %>	
+
+<%@ Property Name="Tabla_Foreana" Type="System.Boolean" Default="False" Category="1. Context"
+	Description="Si la tabla se utilizara para generar un arbol." %>
+	
+
+<%@ Property Name="Tabla_Arbol" Type="System.Boolean" Default="False" Category="1. Context"
+	Description="Si la tabla se utilizara para generar un arbol." %>
+	
+	
+<%-- Options --%>
+<%@ Property Name="IsolationLevel" Type="TransactionIsolationLevelEnum" Default="ReadCommitted" Category="2. Options"
+	Description="Isolation level to use in the generated procedures." %>
+<%@ Property Name="ProcedurePrefix" Type="System.String" Default="usp_" Category="2. Options"
+	Description="Prefix to use for all generated procedure names." %>
+
+<%@ Property Name="TablePrefix" Type="System.String" Default="tbl_" Category="2. Options"
+	Description="If this prefix is found at the start of a table name, it will be stripped off." %>
+	
+<%@ Property Name="AutoExecuteScript" Type="System.Boolean" Default="False" Category="2. Options"
+	Description="Whether or not to immediately execute the script on the target database." %>
+
+<%@ Property Name="OrderByExpression" Type="System.String" Default="" Optional="True" Category="2. Options"
+	Description="If supplied, this expression will be used to apply an order to the results on select statements." %>
+
+<%@ Property Name="ExcludedColumns" Type="StringCollection" Default="" Optional="True" Category="2. Options"
+	Description="If supplied, any columns in this list will be excluded from all stored procedures unless the column is part of the primary key. (* is treated as a wildcard)" %>
+
+<%@ Property Name="ReadOnlyColumns" Type="StringCollection" Default="" Optional="True" Category="2. Options"
+	Description="If supplied, any columns in this list will be treated as read only. (* is treated as a wildcard)" %>
+	
+<%-- Procedure Types --%>
+<%@ Property Name="IncludeInsert" Type="System.Boolean" Default="True" Category="3. Procedure Types"
+	Description="If true an INSERT procedure will be generated." %>
+
+
+<%-- Assembly References --%>
+<%@ Assembly Name="SchemaExplorer" %>
+<%@ Assembly Name="CodeSmith.BaseTemplates" %>
+<%@ Assembly Name="CodeSmith.CustomProperties" %>
+<%@ Assembly Name="System.Data" %>
+<%-- Namespace Imports --%>
+<%@ Import Namespace="SchemaExplorer" %>
+<%@ Import Namespace="CodeSmith.CustomProperties" %>
+<%@ Import Namespace="CodeSmith.BaseTemplates" %>
+<%@ Import Namespace="System.Data" %>
+<%@ Import Namespace="System.Text.RegularExpressions" %>
+<%
+if (IncludeInsert)
+{
+	//GenerateProcedureHeader(GetInsertProcedureName());
+	
+	/*
+	 * Check to see if the primary key is a single column primary key and also if it's either an
+	 * identity column or a GUID.  If so, we will not include the primary key column in the
+	 * list of input parameters.
+	 */
+	
+	if (SourceTable.PrimaryKey.MemberColumns.Count == 1
+		&& (SourceTable.PrimaryKey.MemberColumns[0].DataType == DbType.Guid
+		|| ((SourceTable.PrimaryKey.MemberColumns[0].DataType == DbType.Int16
+		|| SourceTable.PrimaryKey.MemberColumns[0].DataType == DbType.Int32
+		|| SourceTable.PrimaryKey.MemberColumns[0].DataType == DbType.Int64)
+		&& (bool)SourceTable.PrimaryKey.MemberColumns[0].ExtendedProperties["CS_IsIdentity"].Value == true)))
+	{
+		ColumnSchema primaryKeyColumn = SourceTable.PrimaryKey.MemberColumns[0];
+%>
+<?php
+// src/PoaBundle/Admin/<%=SourceTable.Name%>Admin
+
+namespace PoaBundle\Admin;
+
+use Sonata\AdminBundle\Admin\AbstractAdmin;
+use Sonata\AdminBundle\Show\ShowMapper;
+use Sonata\AdminBundle\Form\FormMapper;
+use Sonata\AdminBundle\Datagrid\ListMapper;
+use Sonata\AdminBundle\Datagrid\DatagridMapper;
+
+class  <%=SourceTable.Name%>Admin  extends AbstractAdmin
+{
+    // Fields to be shown on create/edit forms
+    // Los campos que se muestra al crear el Form/Editar
+    protected function configureFormFields(FormMapper $formMapper)
+    {
+        $formMapper                
+        ->with('<%=SourceTable.Description%>', array('class' => 'order col-md-6'))
+               <% GenerateFormFields(SourceTable.NonPrimaryKeyColumns, 1, true);  %> 
+        ->end();
+       ;
+    }
+
+    // Fields to be shown on filter forms
+    protected function configureDatagridFilters(DatagridMapper $datagridMapper)
+    {
+       $datagridMapper      
+       <% GenerateColumnsFilters(SourceTable.ForeignKeyColumns, 1);  %>
+       ;
+    }
+
+    // Fields to be shown on lists
+    protected function configureListFields(ListMapper $listMapper)
+    {
+        $listMapper
+        <% GenerateColumnsListFields(SourceTable.NonPrimaryKeyColumns, 1); %>
+        
+        
+        // add custom action links
+            ->add('_action', 'Acciones',
+              array('actions' => 
+              array('show' => array(),
+                    'edit' => array(),)))
+        ;
+     }
+    // Fields to be shown on show action
+    protected function configureShowFields(ShowMapper $showMapper)
+    {
+        $showMapper
+        <% GenerateColumnsShowFields(SourceTable.NonPrimaryKeyColumns, 1); %>          
+       ;
+    }
+}
+
+
+
+  
+
+<%-- Primary key is not a identity column or a GUID, so include all columns as input parameters. --%>
+<% } 
+else 
+{ %>
+<?php
+// src/PoaBundle/Admin/<%=SourceTable.Name%>Admin
+
+namespace PoaBundle\Admin;
+
+use Sonata\AdminBundle\Admin\AbstractAdmin;
+use Sonata\AdminBundle\Show\ShowMapper;
+use Sonata\AdminBundle\Form\FormMapper;
+use Sonata\AdminBundle\Datagrid\ListMapper;
+use Sonata\AdminBundle\Datagrid\DatagridMapper;
+use Symfony\Component\Validator\Constraints as Assert;
+
+class  <%=SourceTable.Name%>Admin  extends AbstractAdmin
+{
+    // Fields to be shown on create/edit forms
+    // Los campos que se muestra al crear el Form/Editar
+    protected function configureFormFields(FormMapper $formMapper)
+    {
+        $formMapper        
+        <% GenerateFormFields(SourceTable.NonPrimaryKeyColumns, 1, true);  %> 
+       ;
+    }
+
+    // Fields to be shown on filter forms
+    protected function configureDatagridFilters(DatagridMapper $datagridMapper)
+    {
+       $datagridMapper      
+       <% GenerateColumnsFilters(SourceTable.ForeignKeyColumns, 1);  %>
+       ;
+    }
+
+    // Fields to be shown on lists
+    protected function configureListFields(ListMapper $listMapper)
+    {
+        $listMapper
+        <% GenerateColumnsListFields(SourceTable.NonPrimaryKeyColumns, 1); %>
+        
+        
+        // add custom action links
+            ->add('_action', 'Acciones',
+              array('actions' => 
+              array('show' => array(),
+                    'edit' => array(),)))
+        ;
+     }
+    // Fields to be shown on show action
+    protected function configureShowFields(ShowMapper $showMapper)
+    {
+        $showMapper
+        <% GenerateColumnsShowFields(SourceTable.NonPrimaryKeyColumns, 1); %>          
+       ;
+    }
+}
+<%
+
+
+%>
+
+
+
+<%}
+	GenerateProcedureFooter(GetInsertProcedureName());
+	this.Progress.PerformStep();}
+%>
+
+
+<script runat="template">
+#region Member Variables
+private StringCollection _droppedProcedureNames = new StringCollection();
+private StringCollection _generatedProcedureNames = new StringCollection();
+#endregion
+
+#region Isolation Level
+public enum TransactionIsolationLevelEnum
+{
+	ReadCommitted,
+	ReadUncommitted,
+	RepeatableRead,
+	Serializable
+}
+
+public void GenerateSetTransactionIsolationLevelStatement(TransactionIsolationLevelEnum isolationLevel)
+{
+	Response.Write("set TRANSACTION ISOLATION LEVEL ");
+	
+	switch (isolationLevel)
+	{
+		case TransactionIsolationLevelEnum.ReadUncommitted:
+		{
+			Response.WriteLine("READ UNCOMMITTED");
+			break;
+		}
+		case TransactionIsolationLevelEnum.RepeatableRead:
+		{
+			Response.WriteLine("REPEATABLE READ");
+			break;
+		}
+		case TransactionIsolationLevelEnum.Serializable:
+		{
+			Response.WriteLine("SERIALIZABLE");
+			break;
+		}
+		default:
+		{
+			Response.WriteLine("READ COMMITTED");
+			break;
+		}
+	}
+}
+#endregion
+
+public string NombreSP()
+{
+	string NombreSP= SourceTable.Name;	
+	//NombreSP=  NombreSP.Substring(1,NombreSP.Length -1 );	
+	return NombreSP;
+}
+
+public void GenerateSelect(ColumnSchemaCollection columns, int indentLevel)
+{
+	ColumnSchemaCollection filteredColumns = FilterExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		GenerateColumnSe(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1);
+	}
+}
+
+public void GenerateColumnSe(ColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+	GenerateIndent(indentLevel);
+	Response.Write("'");
+	Response.Write(column.Name);
+	Response.Write("'");
+	if (!isLast) Response.Write(",");
+	if (indentLevel >= 0)
+	{
+		Response.WriteLine("");
+	}
+	else if (!isLast)
+	{
+		Response.Write(" ");
+	}
+}
+
+
+#region Code Generation Helpers
+public string GetTableOwner()
+{
+	return GetTableOwner(true);
+}
+
+public string GetTableOwner(bool includeDot)
+{
+	if (SourceTable.Owner.Length > 0)
+	{
+		if (includeDot)
+		{
+			return "" + SourceTable.Owner + ".";
+		}
+		else
+		{
+			return "" + SourceTable.Owner + "";
+		}
+	}
+	else
+	{
+		return "";
+	}
+}
+
+public void GenerateDropStatement(string procedureName)
+{
+	// check to see if this procedure has already been dropped.
+	if (!_droppedProcedureNames.Contains(procedureName))
+	{
+		Response.WriteLine("IF OBJECT_ID(N'{0}') IS NOT NULL", procedureName);
+		GenerateIndent(1);
+		Response.WriteLine("DROP procedure {0}", procedureName);
+		Response.WriteLine("");
+		
+		// add this procedure to the list of dropped procedures
+		_droppedProcedureNames.Add(procedureName);
+	}
+}
+
+public void GenerateProcedureHeader(string procedureName)
+{
+	Response.WriteLine("--region {0}", procedureName);
+	Response.WriteLine("");
+	Response.WriteLine("------------------------------------------------------------------------------------------------------------------------");
+	Response.WriteLine("-- Generated By:   {0} using CodeSmith {1}", System.Environment.UserName, typeof(CodeTemplate).Assembly.GetName().Version.ToString());
+	Response.WriteLine("-- Template:       {0}", this.CodeTemplateInfo.FileName);
+	Response.WriteLine("-- Procedure Name: {0}", procedureName);
+	Response.WriteLine("-- Date Generated: {0}", DateTime.Now.ToLongDateString());
+	Response.WriteLine("------------------------------------------------------------------------------------------------------------------------");
+}
+
+public void GenerateProcedureFooter(string procedureName)
+{
+	Response.WriteLine(" ");	
+}
+
+public void GenerateIndent(int indentLevel)
+{
+    for (int i = 0; i < indentLevel; i++)
+	{
+		Response.Write('\t');
+	}
+}
+
+public void GenerateParameter(ColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+	GenerateParameter(column, indentLevel, isFirst, isLast, false);
+}
+public void GenerateParameter(ColumnSchema column, int indentLevel, bool isFirst, bool isLast, bool isOutput)
+{
+    // 'chg_id'=>Input::get('chg_id'),
+	GenerateIndent(indentLevel);
+    Response.Write("'");
+	Response.Write(column.Name );
+    Response.Write("'=>Input::get('");   
+	Response.Write(column.Name);
+    Response.Write("')");     
+	if (!isLast) Response.Write(",");
+	//if (isLast) Response.Write("=Null");
+	Response.WriteLine("");
+		
+}
+
+//*****************************************
+// VH  Plantilla Laravel  5.2
+//  GetView
+//*****************************************
+public void GenerateGetView(ColumnSchemaCollection columns, int indentLevel, bool includeTrailingComma)
+{
+	ColumnSchemaCollection filteredColumns = FilterExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		GenerateParameterGV(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1 && !includeTrailingComma);
+	}
+}
+public void GenerateParameterGV(ColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+	GenerateParameterGV(column, indentLevel, isFirst, isLast, false);
+}
+public void GenerateParameterGV(ColumnSchema column, int indentLevel, bool isFirst, bool isLast, bool isOutput)
+{
+    GenerateIndent(indentLevel);
+    GenerateIndent(indentLevel);
+    Response.Write("'");
+	Response.Write(column.Name );
+    Response.Write("'=>$value->");   
+	Response.Write(column.Name);
+    if (!isLast) Response.Write(",");
+	Response.WriteLine("");
+		
+}
+// postAdd 
+
+
+
+
+
+//*****************************************
+
+
+
+
+// FIN
+// VH  Plantilla Laravel  5.2
+// FIN 
+
+
+
+
+public void GenerateParameters(ColumnSchemaCollection columns, int indentLevel)
+{
+	GenerateParameters(columns, indentLevel, false);
+}
+
+public void GenerateParameters(ColumnSchemaCollection columns, int indentLevel, bool includeTrailingComma)
+{
+	ColumnSchemaCollection filteredColumns = FilterExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		GenerateParameter(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1 && !includeTrailingComma);
+	}
+}
+
+
+//2017
+public void GenerateColumns(ColumnSchemaCollection columns, int indentLevel)
+{
+	ColumnSchemaCollection filteredColumns = FilterExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		GenerateColumn(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1);
+	}
+}
+
+// 2017
+
+public void GenerateColumn(ColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+	//GenerateIndent(indentLevel);
+	//Response.Write("");
+	Response.Write(column.Name);
+	//Response.Write("");
+	//if (!isLast) Response.Write(",");
+	if (indentLevel >= 0)
+	{
+	//	Response.WriteLine("");
+	}
+	else if (!isLast)
+	{
+	//	Response.Write(" ");
+	}
+}
+
+
+
+public void GenerateUpdate(ColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+	//$object->uni_id = Input::get('uni_id');
+    GenerateIndent(indentLevel);
+	Response.Write("$object->");
+	Response.Write(column.Name);
+	Response.Write("= Input::get('");
+	Response.Write(column.Name);
+    Response.Write("');");
+	//if (!isLast) Response.Write(",");
+	if (indentLevel >= 0)
+	{
+		Response.WriteLine("");
+	}
+	else if (!isLast)
+	{
+		Response.Write(" ");
+	}
+}
+
+public void GenerateUpdates(ColumnSchemaCollection columns, int indentLevel)
+{
+	ColumnSchemaCollection filteredColumns = FilterReadOnlyAndExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		GenerateUpdate(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1);
+	}
+}
+
+public void GenerateCondition(ColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+	GenerateIndent(indentLevel);
+	if (!isFirst) Response.Write("AND ");
+	Response.Write("");
+	Response.Write(column.Name);
+	Response.Write(" = @i_");
+	Response.Write(column.Name);
+	if (indentLevel >= 0)
+	{
+		Response.WriteLine("");
+	}
+	else if (!isLast)
+	{
+		Response.Write(" ");
+	}
+}
+
+public void GenerateConditions(ColumnSchemaCollection columns, int indentLevel)
+{
+	ColumnSchemaCollection filteredColumns = FilterExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		GenerateCondition(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1);
+	}
+}
+
+public void GenerateVariable(ColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+	GenerateIndent(indentLevel);
+	Response.Write("@i_");
+	Response.Write(column.Name);
+	if (!isLast) Response.Write(",");
+	if (indentLevel >= 0)
+	{
+		Response.WriteLine("");
+	}
+	else if (!isLast)
+	{
+		Response.Write(" ");
+	}
+}
+
+public void GenerateVariables(ColumnSchemaCollection columns, int indentLevel)
+{
+	ColumnSchemaCollection filteredColumns = FilterExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		GenerateVariable(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1);
+	}
+}
+
+public void GenerateOrderByClause()
+{
+	if (OrderByExpression != null && OrderByExpression.Trim().Length > 0)
+	{
+		Response.WriteLine("ORDER BY");
+		GenerateIndent(1);
+		Response.WriteLine(OrderByExpression);
+	}
+}
+
+public ColumnSchemaCollection FilterReadOnlyColumns(ColumnSchemaCollection columns)
+{
+	ColumnSchemaCollection filteredColumns = new ColumnSchemaCollection();
+	
+	for (int i = 0; i < columns.Count; i++)
+	{
+		if (!ColumnIsReadOnly(columns[i])) filteredColumns.Add(columns[i]);
+	}
+	
+	return filteredColumns;
+}
+
+public ColumnSchemaCollection FilterExcludedColumns(ColumnSchemaCollection columns)
+{
+	ColumnSchemaCollection filteredColumns = new ColumnSchemaCollection();
+	
+	for (int i = 0; i < columns.Count; i++)
+	{
+		if (!ColumnIsExcluded(columns[i])) filteredColumns.Add(columns[i]);
+	}
+	
+	return filteredColumns;
+}
+
+public ColumnSchemaCollection FilterReadOnlyAndExcludedColumns(ColumnSchemaCollection columns)
+{
+	ColumnSchemaCollection filteredColumns = new ColumnSchemaCollection();
+	
+	for (int i = 0; i < columns.Count; i++)
+	{
+		if (!ColumnIsExcludedOrReadOnly(columns[i])) filteredColumns.Add(columns[i]);
+	}
+	
+	return filteredColumns;
+}
+
+private Regex excludedColumnRegex = null;
+
+public bool ColumnIsExcluded(ColumnSchema column)
+{
+	if (column.IsPrimaryKeyMember) return false;
+	
+	if (excludedColumnRegex == null)
+	{
+		if (ExcludedColumns != null && ExcludedColumns.Count > 0)
+		{
+			string excluded = String.Empty;
+			for (int i = 0; i < ExcludedColumns.Count; i++)
+			{
+				if (ExcludedColumns[i].Trim().Length > 0)
+				{
+					excluded += "(" + Regex.Escape(ExcludedColumns[i]).Replace("\\*", ".*?") + ")|";
+				}
+			}
+			
+			if (excluded.Length > 0)
+			{
+				excluded = excluded.Substring(0, excluded.Length - 1);
+				excludedColumnRegex = new Regex(excluded, RegexOptions.IgnoreCase);
+			}
+		}
+	}
+	
+	if (excludedColumnRegex != null && excludedColumnRegex.IsMatch(column.Name)) return true;
+	
+	return false;
+}
+
+private Regex readOnlyColumnRegex = null;
+
+public bool ColumnIsReadOnly(ColumnSchema column)
+{
+	if (column.IsPrimaryKeyMember) return false;
+	
+	if (readOnlyColumnRegex == null)
+	{
+		if (ReadOnlyColumns != null && ReadOnlyColumns.Count > 0)
+		{
+			string readOnly = String.Empty;
+			for (int i = 0; i < ReadOnlyColumns.Count; i++)
+			{
+				if (ReadOnlyColumns[i].Trim().Length > 0)
+				{
+					readOnly += "(" + Regex.Escape(ReadOnlyColumns[i]).Replace("\\*", ".*?") + ")|";
+				}
+			}
+			
+			if (readOnly.Length > 0)
+			{
+				readOnly = readOnly.Substring(0, readOnly.Length - 1);
+				readOnlyColumnRegex = new Regex(readOnly, RegexOptions.IgnoreCase);
+			}
+		}
+	}
+	
+	if (readOnlyColumnRegex != null && readOnlyColumnRegex.IsMatch(column.Name)) return true;
+	
+	return false;
+}
+
+public bool ColumnIsExcludedOrReadOnly(ColumnSchema column)
+{
+	return ColumnIsExcluded(column) || ColumnIsReadOnly(column);
+}
+#endregion
+
+#region Procedure Naming
+public string GetInsertProcedureName()
+{
+	return String.Format("{0}{1}{2}", "p", "", GetEntityName(false));
+}
+
+public string GetUpdateProcedureName()
+{
+	return String.Format("{0}[{1}Update{2}]", GetTableOwner(), ProcedurePrefix, GetEntityName(false));
+}
+
+public string GetInsertUpdateProcedureName()
+{
+	return String.Format("{0}[{1}InsertUpdate{2}]", GetTableOwner(), ProcedurePrefix, GetEntityName(false));
+}
+
+public string GetDeleteProcedureName()
+{
+	return String.Format("{0}[{1}Delete{2}]", GetTableOwner(), ProcedurePrefix, GetEntityName(false));
+}
+
+public string GetSelectProcedureName()
+{
+	return String.Format("{0}[{1}Select{2}]", GetTableOwner(), ProcedurePrefix, GetEntityName(false));
+}
+
+public string GetSelectAllProcedureName()
+{
+	return String.Format("{0}[{1}Select{2}All]", GetTableOwner(), ProcedurePrefix, GetEntityName(true));
+}
+
+public string GetSelectPagedProcedureName()
+{
+	return String.Format("{0}[{1}Select{2}Paged]", GetTableOwner(), ProcedurePrefix, GetEntityName(true));
+}
+
+public string GetSelectByProcedureName(ColumnSchemaCollection targetColumns)
+{
+	return String.Format("{0}[{1}Select{2}By{3}]", GetTableOwner(), ProcedurePrefix, GetEntityName(true), GetBySuffix(targetColumns));
+}
+
+public string GetSelectDynamicProcedureName()
+{
+	return String.Format("{0}[{1}Select{2}Dynamic]", GetTableOwner(), ProcedurePrefix, GetEntityName(true));
+}
+
+public string GetDeleteByProcedureName(ColumnSchemaCollection targetColumns)
+{
+	return String.Format("{0}[{1}Delete{2}By{3}]", GetTableOwner(), ProcedurePrefix, GetEntityName(true), GetBySuffix(targetColumns));
+}
+
+public string GetDeleteDynamicProcedureName()
+{
+	return String.Format("{0}[{1}Delete{2}Dynamic]", GetTableOwner(), ProcedurePrefix, GetEntityName(true));
+}
+
+public string GetEntityName(bool plural)
+{
+	string entityName = SourceTable.Name;
+	
+	if (entityName.StartsWith(TablePrefix))
+	{
+		entityName = entityName.Substring(TablePrefix.Length);
+	}
+	
+	if (plural)
+	{
+		entityName = StringUtil.ToPlural(entityName);
+        // entityName = StringUtil.ToPascalCase(entityName) ;
+        entityName =(entityName) ;
+	}
+	else
+	{
+		entityName =  StringUtil.ToSingular(entityName);
+        entityName = StringUtil.ToPascalCase(entityName) ;
+        
+	}
+	
+	return entityName ;
+}
+
+public string GetBySuffix(ColumnSchemaCollection columns)
+{
+    System.Text.StringBuilder bySuffix = new System.Text.StringBuilder();
+	for (int i = 0; i < columns.Count; i++)
+	{
+	    if (i > 0) bySuffix.Append("And");
+	    bySuffix.Append(columns[i].Name);
+	}
+	
+	return bySuffix.ToString();
+}
+#endregion
+
+#region Template Overrides
+// Assign an appropriate file name to the output.
+public override string GetFileName()
+{
+	if (this.SourceTable != null)
+	{
+		return this.SourceTable.Name + "_Procedures.sql";
+	}
+	else
+	{
+		return base.GetFileName();
+	}
+}
+
+// Override the OutputFile property and assign our specific settings to it.
+[Category("2. Options")]
+[FileDialog(FileDialogType.Save, Title="Select Output File", Filter="Query Files (*.sql)|*.sql|All Files (*.*)|*.*", DefaultExtension=".sql")]
+public override string OutputFile
+{
+	get {return base.OutputFile;}
+	set {base.OutputFile = value;}
+}
+
+protected override void OnPostRender(string result) 
+{
+	if (this.AutoExecuteScript)
+	{
+		// execute the output on the same database as the source table.
+		CodeSmith.BaseTemplates.ScriptResult scriptResult = CodeSmith.BaseTemplates.ScriptUtility.ExecuteScript(this.SourceTable.Database.ConnectionString, result, new System.Data.SqlClient.SqlInfoMessageEventHandler(cn_InfoMessage)); 
+		Trace.WriteLine(scriptResult.ToString());
+	}
+	
+	base.OnPostRender(result);
+}
+
+private void cn_InfoMessage(object sender, System.Data.SqlClient.SqlInfoMessageEventArgs e)
+{
+	Trace.WriteLine(e.Message);
+}
+
+public string GetPrimaryKeyTable(SchemaExplorer.ColumnSchema column)
+{
+   SchemaExplorer.TableSchema table = column.Table;
+   SchemaExplorer.TableKeySchemaCollection fKeys = table.ForeignKeys;
+ 
+   foreach (SchemaExplorer.TableKeySchema fk in fKeys)
+   {
+      foreach (SchemaExplorer.MemberColumnSchema fkCol in fk.ForeignKeyMemberColumns)
+      {
+          if(fkCol.Column.Name==column.Name)
+          {
+              return fk.PrimaryKeyTable.Name;
+          }
+      }
+   }
+ 
+return "";
+}
+
+#endregion
+
+public void GenerateFormFields(ColumnSchemaCollection columns, int indentLevel, bool includeTrailingComma)
+{
+	ColumnSchemaCollection filteredColumns = FilterExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		GenerateFormFields(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1 && !includeTrailingComma);
+	}
+}
+
+
+#region NuevosSymfony
+
+/* 
+------------------------------------------------------------------------------------------
+* Author: Victor Lude?o  
+* Description: Funciones generadoras de codigo para el Bundle Sonata de Symfony 
+* //Victor 2017 Symfony
+------------------------------------------------------------------------------------------ */
+//2017 function configureFormFields
+public void GenerateFormFields(ColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+	GenerateFormField(column, indentLevel, isFirst, isLast, false);
+}
+public void GenerateFormField(ColumnSchema column, int indentLevel, bool isFirst, bool isLast, bool isOutput)
+{      
+    // ->add('partida', 'text' ,array('label' =>',','required' => false|True" )
+    GenerateIndent(indentLevel);
+    GenerateIndent(indentLevel);
+    Response.Write("->add('");
+    Response.Write(column.Name );
+    Response.Write("',");
+    if (column.IsForeignKeyMember) 
+    {
+        Response.Write("null");
+    }
+    else    
+    {        
+	    Response.Write(GetSqlType(column.DataType));        
+    }
+    Response.Write(",array('label' =>'");
+    Response.Write(column.Description);
+    Response.Write("','required' => ") ;
+    if (column.AllowDBNull) 
+    {
+        Response.Write("false");
+    }
+    else    
+    {
+	    Response.Write("true");
+    }   
+    
+    Response.Write(column.Size);
+    
+    
+    Response.Write("))");
+	Response.WriteLine("");
+   
+}
+
+//2017 function GenerateColumnsFilters
+public void GenerateColumnsFilters(ColumnSchemaCollection columns, int indentLevel)
+{
+	ColumnSchemaCollection filteredColumns = FilterExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		GenerateColumnsFilter(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1);
+	}
+}
+public void GenerateColumnsFilter(ColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+	GenerateIndent(indentLevel);
+    GenerateIndent(indentLevel);
+    Response.Write("->add('");
+    Response.Write(column.Name);	  
+    Response.Write("')");
+    Response.WriteLine("");
+
+}
+
+//2017 function configureListFields
+public void GenerateColumnsListFields(ColumnSchemaCollection columns, int indentLevel)
+{
+	ColumnSchemaCollection filteredColumns = FilterExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		GenerateColumnListField(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1);
+	}
+}
+public void GenerateColumnListField(ColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+	GenerateIndent(indentLevel);
+    GenerateIndent(indentLevel);
+    if (isFirst) 
+    {
+        Response.Write("->addIdentifier('");
+    }
+    else    
+    {
+	    Response.Write("->add('");
+    }
+	Response.Write(column.Name);	  
+    Response.Write("')");
+    Response.WriteLine("");
+
+}
+//2017 function  ShowFields
+public void GenerateColumnsShowFields(ColumnSchemaCollection columns, int indentLevel)
+{
+	ColumnSchemaCollection filteredColumns = FilterExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		GenerateColumnShowField(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1);
+	}
+}
+public void GenerateColumnShowField(ColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+	GenerateIndent(indentLevel);
+    GenerateIndent(indentLevel);
+    Response.Write("->add('");    
+	Response.Write(column.Name);
+	Response.Write("')");
+    Response.WriteLine("");
+
+}
+
+
+public string GetSqlType(DbType dbType)
+{
+	switch (dbType)
+	{
+		case DbType.AnsiString: return "text";
+		case DbType.AnsiStringFixedLength: return "text";
+		case DbType.Binary: return "Binary";
+		case DbType.Boolean: return "boolean";
+		case DbType.Byte: return "Byte";
+		case DbType.Currency: return "Money";
+		case DbType.Date: return "datetime";
+		case DbType.Time: return "DateTime";
+		case DbType.DateTime: return "DateTime";        
+		case DbType.Decimal: return "Decimal";
+		case DbType.Double: return "number";
+		case DbType.Guid: return "Guid";
+		case DbType.Int16: return "number";
+		case DbType.Int32: return "integer";
+		case DbType.Int64: return "integer";
+		case DbType.Object: return "object";
+		case DbType.Single: return "Single";
+		case DbType.String: return "text";
+		case DbType.StringFixedLength: return "text";
+		case DbType.VarNumeric: return "Decimal";
+		default:
+		{
+			return "__UNKNOWN__" + dbType.ToString();
+		}
+	}
+}
+
+#endregion
+
+</script>
