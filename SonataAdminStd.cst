@@ -100,6 +100,12 @@ use Sonata\CoreBundle\Validator\ErrorElement;
 
 class  <%=SourceTable.Name%>Admin  extends AbstractAdmin
 {
+    
+    public function configure()
+    {
+    <% GenerateChildCs(SourceTable.ForeignKeyColumns, 1);  %>
+    }
+  
 
   /*  protected function configureSideMenu(ItemInterface $menu, $action, AdminInterface $childAdmin = null)
     {
@@ -908,6 +914,26 @@ public void GenerateChildFields(ColumnSchemaCollection columns, int indentLevel,
 }
 
 
+public void GenerateChildCs(ColumnSchemaCollection columns, int indentLevel)
+{
+	ColumnSchemaCollection filteredColumns = FilterExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		GenerateChildC(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1);
+	}
+}
+public void GenerateChildC(ColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+    GenerateIndent(indentLevel);
+    GenerateIndent(indentLevel);
+    Response.Write("//$this->parentAssociationMapping = '");
+    Response.Write(column.Name);	  
+    Response.Write("';");
+    Response.WriteLine("");
+
+}
+
+
 #region NuevosSymfony
 
 /* 
@@ -1052,7 +1078,12 @@ public void GenerateValidateField(ColumnSchema column, int indentLevel, bool isF
     GenerateIndent(indentLevel);
     GenerateIndent(indentLevel);
     GenerateIndent(indentLevel);
-    Response.Write("//->assertRegex(array('pattern' => '/^[a-z]+$/i'))"); 
+    Response.Write("//->assertRegex(array('pattern' => '/^[a-z ??????????????]+$/i'))"); 
+    Response.WriteLine(""); 
+    GenerateIndent(indentLevel);
+    GenerateIndent(indentLevel);
+    GenerateIndent(indentLevel);
+    Response.Write("//->assertEmail()");
     Response.WriteLine("");
     GenerateIndent(indentLevel);
     GenerateIndent(indentLevel);
