@@ -1,0 +1,731 @@
+<%------------------------------------------------------------------------------------------
+* Author: Eric J. Smith 
+* Description: This template will generate standard CRUD stored procedures for a given 
+*   database table.
+------------------------------------------------------------------------------------------%>
+<%@ CodeTemplate Debug="True" Language="C#" Inherits="CodeSmith.BaseTemplates.SqlCodeTemplate" TargetLanguage="T-SQL"
+	Description="Generates standard CRUD procedures based on a database table schema." %>
+<%-- Context --%>
+<%@ Property Name="SourceDatabase" Type="SchemaExplorer.DatabaseSchema" Category="1. Context" Description="Database that the stored procedures should be based on." %>
+<%@ Property Name="SourceTable" Type="SchemaExplorer.TableSchema" Category="1. Context"
+	Description="Table that the stored procedures should be based on." %>
+<%-- Options 2 --%>
+<%@ Property Name="Tabla_Foreana" Type="System.Boolean" Default="False" Category="2. Master-Detalle"
+	Description="Si la tabla se utilizara para generar un arbol." %>
+<%@ Property Name="Tabla_Arbol" Type="System.Boolean" Default="False" Category="2. Master-Detalle"
+	Description="Si la tabla se utilizara para generar un arbol." %>
+<%-- Options --%>
+
+
+<%@ Property Name="ExcludedColumns" Type="StringCollection" Default="" Optional="True" Category="3. Options"
+	Description="If supplied, any columns in this list will be excluded from all stored procedures unless the column is part of the primary key. (* is treated as a wildcard)" %>
+<%-- Assembly References --%>
+<%@ Assembly Name="SchemaExplorer" %>
+<%@ Assembly Name="CodeSmith.BaseTemplates" %>
+<%@ Assembly Name="CodeSmith.CustomProperties" %>
+<%@ Assembly Name="System.Data" %>
+<%-- Namespace Imports --%>
+<%@ Import Namespace="SchemaExplorer" %>
+<%@ Import Namespace="CodeSmith.CustomProperties" %>
+<%@ Import Namespace="CodeSmith.BaseTemplates" %>
+<%@ Import Namespace="System.Data" %>
+<%@ Import Namespace="System.Text.RegularExpressions" %>
+
+<%------------------------------------------------------------------------------------------
+*
+* Insert Procedure
+*
+------------------------------------------------------------------------------------------%>
+/**************************************************************************
+ SISTEMA  - MODULO DE  
+***************************************************************************
+ SCRITP: 		
+ DESCRIPCION: 	
+ AUTOR: 		
+ FECHA:			
+ COMENTARIOS:	
+***************************************************************************
+ HISTORIA DE MODIFICACIONES:
+ DESCRIPCION:	
+ AUTOR:			
+ FECHA:
+***************************************************************************/
+
+
+	<% for (int K = 0; K < SourceTable.Keys.Count; K++) { %>	
+	<% if (SourceTable.Name !=  SourceTable.Keys[K].ForeignKeyTable.Name) {%>
+	<% = SourceTable.Keys[K].ForeignKeyTable.Name %>
+	<%}%>	
+	<%}%>
+
+
+
+if exists (select * from dbo.sysobjects where id = object_id(N'p<%= NombreSP() %>') and OBJECTPROPERTY(id, N'IsProcedure') = 1)
+drop procedure p<%= NombreSP() %>
+
+go
+create procedure p<%= NombreSP() %>
+	@i_operacion 		char(1),		
+<% GenerateParameters(FilterReadOnlyAndExcludedColumns(SourceTable.Columns),1,false); %>
+with encryption 
+AS
+declare
+@w_lerror			tinyint
+set nocount on
+
+/*******INSERT*******/
+
+if @i_operacion = 'I' begin
+	if exists( select 1 from <%= SourceTable.Name %>
+	where <% GenerateConditions(SourceTable.PrimaryKey.MemberColumns, 1); %>)begin	
+		select @w_lerror = 1
+		goto ErrorSP
+	end 
+	<% if (Tabla_Foreana) { %>
+	/*  comprobaciones de llaves foraneas */
+	<% for (int K = 0; K < SourceTable.ForeignKeys.Count; K++) { %>
+	if not exists(select 1 from <%= SourceTable.ForeignKeys[K].PrimaryKeyMemberColumns[K].Table.Name%>	
+	where <%= SourceTable.ForeignKeys[K].PrimaryKeyMemberColumns[K].Name%>=@i_<%= SourceTable.ForeignKeys[K].PrimaryKeyMemberColumns[K].Name%> ) begin
+		select @w_lerror 	= 1
+		goto ErrorSP
+	end
+	<%}%>
+	<%}%>
+
+	<% if (Tabla_Arbol) { %>
+	/* si es  arbol.. verifica que exista el registro raiz*/
+	if not exists(select 1 from <%= SourceTable.Name %>) begin 
+	insert into <%= SourceTable.Name %> (<% GenerateColumns(SourceTable.Columns, 1); %>)
+	values('RAIZ','RAIZ','RAIZ','RAIZ') -- completar los campos		
+	if @@error <> 0 begin
+			select @w_lerror = 1
+			goto ErrorSP
+		end
+	end
+	<% } %>
+
+	begin tran	
+	insert into <%= SourceTable.Name %>
+	(<% GenerateColumns(SourceTable.Columns, 1); %>)
+	values(<% GenerateVariables(SourceTable.Columns, 1); %>)
+	
+	if @@error <> 0 begin
+		select @w_lerror = 1
+		goto ErrorSP
+	end  
+		
+	commit
+
+end
+
+/*******update*******/
+if @i_operacion = 'U' begin
+	if not exists(select 1 from <%= SourceTable.Name %>
+	where <% GenerateConditions(SourceTable.PrimaryKey.MemberColumns, 1); %>)begin
+		select @w_lerror	= 1
+		goto ErrorSP
+	end
+	<% if (Tabla_Foreana) { %>
+	/*  comprobaciones de llaves foraneas */
+	<% for (int K = 0; K < SourceTable.ForeignKeys.Count; K++) { %>
+	if not exists(select 1 from <%= SourceTable.ForeignKeys[K].PrimaryKeyMemberColumns[K].Table.Name%>	
+	where <%= SourceTable.ForeignKeys[K].PrimaryKeyMemberColumns[K].Name%>=@i_<%= SourceTable.ForeignKeys[K].PrimaryKeyMemberColumns[K].Name%>  begin
+		select @w_lerror 	= 1
+		goto ErrorSP
+	end
+	<%}%>
+	<%}%>	
+	begin tran
+	update <%= SourceTable.Name %>
+	set
+		<% GenerateUpdates(SourceTable.NonPrimaryKeyColumns, 1); %>
+	where
+		<% GenerateConditions(SourceTable.PrimaryKey.MemberColumns, 1); %>
+	if @@error <> 0 begin
+		
+		select @w_lerror = 1
+		goto ErrorSP
+	end  
+	
+	commit
+end
+
+/*******delete*******/
+
+if @i_operacion = 'D' begin
+	if not exists(select 1 from <%= SourceTable.Name %>
+	where <% GenerateConditions(SourceTable.PrimaryKey.MemberColumns, 1);%>)begin
+		select @w_lerror	= 1
+		goto ErrorSP
+	end	
+	--/*  comprobacione de tablas foraneas */
+	<% for (int K = 0; K < SourceTable.Keys.Count; K++) { %>	
+	<% if (SourceTable.Name !=  SourceTable.Keys[K].ForeignKeyTable.Name) {%>
+	if exists(select 1 from <% = SourceTable.Keys[K].ForeignKeyTable.Name %>
+	where <%GenerateConditions(SourceTable.PrimaryKey.MemberColumns,1);%>) begin
+		select @w_lerror 	= 1
+		goto ErrorSP
+		end
+	<%}%>	
+	<%}%>
+	--/* Fin  comprobaciones de tablas foraneas */
+	begin tran
+	delete from <%= SourceTable.Name %>
+	where <% GenerateConditions(SourceTable.PrimaryKey.MemberColumns, 1); %>
+
+	if @@error <> 0 begin
+		select @w_lerror= 1
+		goto ErrorSP
+	end
+	commit
+end 
+
+/*******VALUE*******/ --Devuelve los datos de una fila especifica
+
+if @i_operacion = 'V' begin
+
+	select 
+	<% GenerateColumns(SourceTable.Columns, 1); %>
+	from <%= SourceTable.Name %>
+	where <% GenerateConditions(SourceTable.PrimaryKey.MemberColumns, 1); %>
+	
+	if @@rowcount = 0 begin
+		select @w_lerror = 2
+		goto ErrorSP
+    end
+end
+
+/******* QUERY *******/ --Devuelve los datos de la tabla
+
+if @i_operacion = 'S'begin 
+	select 
+		<% GenerateSelect(SourceTable.Columns, 1); %>
+
+	select 
+		<% GenerateColumns(SourceTable.Columns, 1); %>
+	from <%= SourceTable.Name %>
+	/*where <% GenerateConditions(SourceTable.PrimaryKey.MemberColumns, 1); %>*/
+
+	if @@rowcount = 0 begin
+		select @w_lerror = 2
+		goto ErrorSP
+	end
+end 
+
+set nocount off
+
+return 0
+
+---------------------
+--MANEJO DE ERRORES--
+---------------------
+
+ErrorSP:
+
+while @@trancount > 0 rollback
+
+set nocount off
+
+return @w_lerror
+go
+
+grant execute on p<%= NombreSP() %>  to public
+go
+
+
+<%
+foreach(TableSchema table in SourceDatabase.Tables)
+{
+    Response.WriteLine("-- Skipping " + table.Owner +"." + table.Name + " because it does not have a primary key");
+  
+}
+
+%>
+
+
+
+
+<script runat="template">
+#region Member Variables
+private StringCollection _droppedProcedureNames = new StringCollection();
+private StringCollection _generatedProcedureNames = new StringCollection();
+#endregion
+
+#region Isolation Level
+public enum TransactionIsolationLevelEnum
+{
+	ReadCommitted,
+	ReadUncommitted,
+	RepeatableRead,
+	Serializable
+}
+
+public void GenerateSetTransactionIsolationLevelStatement(TransactionIsolationLevelEnum isolationLevel)
+{
+	Response.Write("set TRANSACTION ISOLATION LEVEL ");
+	
+	switch (isolationLevel)
+	{
+		case TransactionIsolationLevelEnum.ReadUncommitted:
+		{
+			Response.WriteLine("READ UNCOMMITTED");
+			break;
+		}
+		case TransactionIsolationLevelEnum.RepeatableRead:
+		{
+			Response.WriteLine("REPEATABLE READ");
+			break;
+		}
+		case TransactionIsolationLevelEnum.Serializable:
+		{
+			Response.WriteLine("SERIALIZABLE");
+			break;
+		}
+		default:
+		{
+			Response.WriteLine("READ COMMITTED");
+			break;
+		}
+	}
+}
+#endregion
+
+public string NombreSP()
+{
+	string NombreSP= SourceTable.Name;	
+	//NombreSP=  NombreSP.Substring(1,NombreSP.Length -1 );	
+	return NombreSP;
+}
+
+public void GenerateSelect(ColumnSchemaCollection columns, int indentLevel)
+{
+	ColumnSchemaCollection filteredColumns = FilterExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		GenerateColumnSe(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1);
+	}
+}
+
+public void GenerateColumnSe(ColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+	GenerateIndent(indentLevel);
+	Response.Write("'");
+	Response.Write(column.Name);
+	Response.Write("'");
+	if (!isLast) Response.Write(",");
+	if (indentLevel >= 0)
+	{
+		Response.WriteLine("");
+	}
+	else if (!isLast)
+	{
+		Response.Write(" ");
+	}
+}
+
+
+#region Code Generation Helpers
+public string GetTableOwner()
+{
+	return GetTableOwner(true);
+}
+
+public string GetTableOwner(bool includeDot)
+{
+	if (SourceTable.Owner.Length > 0)
+	{
+		if (includeDot)
+		{
+			return "" + SourceTable.Owner + ".";
+		}
+		else
+		{
+			return "" + SourceTable.Owner + "";
+		}
+	}
+	else
+	{
+		return "";
+	}
+}
+
+public void GenerateDropStatement(string procedureName)
+{
+	// check to see if this procedure has already been dropped.
+	if (!_droppedProcedureNames.Contains(procedureName))
+	{
+		Response.WriteLine("IF OBJECT_ID(N'{0}') IS NOT NULL", procedureName);
+		GenerateIndent(1);
+		Response.WriteLine("DROP procedure {0}", procedureName);
+		Response.WriteLine("");
+		
+		// add this procedure to the list of dropped procedures
+		_droppedProcedureNames.Add(procedureName);
+	}
+}
+
+public void GenerateProcedureHeader(string procedureName)
+{
+	Response.WriteLine("--region {0}", procedureName);
+	Response.WriteLine("");
+	Response.WriteLine("------------------------------------------------------------------------------------------------------------------------");
+	Response.WriteLine("-- Generated By:   {0} using CodeSmith {1}", System.Environment.UserName, typeof(CodeTemplate).Assembly.GetName().Version.ToString());
+	Response.WriteLine("-- Template:       {0}", this.CodeTemplateInfo.FileName);
+	Response.WriteLine("-- Procedure Name: {0}", procedureName);
+	Response.WriteLine("-- Date Generated: {0}", DateTime.Now.ToLongDateString());
+	Response.WriteLine("------------------------------------------------------------------------------------------------------------------------");
+}
+
+public void GenerateProcedureFooter(string procedureName)
+{
+	Response.WriteLine(" ");	
+}
+
+public void GenerateIndent(int indentLevel)
+{
+    for (int i = 0; i < indentLevel; i++)
+	{
+		Response.Write('\t');
+	}
+}
+
+public void GenerateParameter(ColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+	GenerateParameter(column, indentLevel, isFirst, isLast, false);
+}
+
+public void GenerateParameter(ColumnSchema column, int indentLevel, bool isFirst, bool isLast, bool isOutput)
+{
+	GenerateIndent(indentLevel);
+	Response.Write("@i_");
+	Response.Write(GetSqlParameterStatement(column, isOutput).Replace("@",""));
+	if (!isLast) Response.Write("		=null,") ;
+	if (isLast) Response.Write("=Null");
+	Response.WriteLine("");
+		
+}
+
+public void GenerateParameters(ColumnSchemaCollection columns, int indentLevel)
+{
+	GenerateParameters(columns, indentLevel, false);
+}
+
+public void GenerateParameters(ColumnSchemaCollection columns, int indentLevel, bool includeTrailingComma)
+{
+	ColumnSchemaCollection filteredColumns = FilterExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		GenerateParameter(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1 && !includeTrailingComma);
+	}
+}
+
+public void GenerateColumn(ColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+	GenerateIndent(indentLevel);
+	Response.Write("");
+	Response.Write(column.Name);
+	Response.Write("");
+	if (!isLast) Response.Write(",");
+	if (indentLevel >= 0)
+	{
+		Response.WriteLine("");
+	}
+	else if (!isLast)
+	{
+		Response.Write(" ");
+	}
+}
+
+public void GenerateColumns(ColumnSchemaCollection columns, int indentLevel)
+{
+	ColumnSchemaCollection filteredColumns = FilterExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		GenerateColumn(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1);
+	}
+}
+
+public void GenerateUpdate(ColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+	GenerateIndent(indentLevel);
+	Response.Write("");
+	Response.Write(column.Name);
+	Response.Write(" = @i_");
+	Response.Write(column.Name);
+	if (!isLast) Response.Write(",");
+	if (indentLevel >= 0)
+	{
+		Response.WriteLine("");
+	}
+	else if (!isLast)
+	{
+		Response.Write(" ");
+	}
+}
+
+ public void GenerateUpdates(ColumnSchemaCollection columns, int indentLevel)
+{
+	ColumnSchemaCollection filteredColumns = FilterReadOnlyAndExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		//GenerateUpdate(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1);
+	}
+} 
+
+public void GenerateCondition(ColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+	GenerateIndent(indentLevel);
+	if (!isFirst) Response.Write("AND ");
+	Response.Write("");
+	Response.Write(column.Name);
+	Response.Write(" = @i_");
+	Response.Write(column.Name);
+	if (indentLevel >= 0)
+	{
+		Response.WriteLine("");
+	}
+	else if (!isLast)
+	{
+		Response.Write(" ");
+	}
+}
+
+public void GenerateConditions(ColumnSchemaCollection columns, int indentLevel)
+{
+	ColumnSchemaCollection filteredColumns = FilterExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		GenerateCondition(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1);
+	}
+}
+
+public void GenerateVariable(ColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+	GenerateIndent(indentLevel);
+	Response.Write("@i_");
+	Response.Write(column.Name);
+	if (!isLast) Response.Write(",");
+	if (indentLevel >= 0)
+	{
+		Response.WriteLine("");
+	}
+	else if (!isLast)
+	{
+		Response.Write(" ");
+	}
+}
+
+public void GenerateVariables(ColumnSchemaCollection columns, int indentLevel)
+{
+	ColumnSchemaCollection filteredColumns = FilterExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		GenerateVariable(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1);
+	}
+}
+
+<%-- public void GenerateOrderByClause()
+{
+    if (OrderByExpression != null && OrderByExpression.Trim().Length > 0)
+    {
+        Response.WriteLine("ORDER BY");
+        GenerateIndent(1);
+        Response.WriteLine(OrderByExpression);
+    }
+} --%>
+
+ public ColumnSchemaCollection FilterReadOnlyColumns(ColumnSchemaCollection columns)
+{
+	ColumnSchemaCollection filteredColumns = new ColumnSchemaCollection();
+	
+	for (int i = 0; i < columns.Count; i++)
+	{
+		//if (!ColumnIsReadOnly(columns[i])) filteredColumns.Add(columns[i]);
+	}
+	
+	return filteredColumns;
+} 
+
+public ColumnSchemaCollection FilterExcludedColumns(ColumnSchemaCollection columns)
+{
+	ColumnSchemaCollection filteredColumns = new ColumnSchemaCollection();
+	
+	for (int i = 0; i < columns.Count; i++)
+	{
+		if (!ColumnIsExcluded(columns[i])) filteredColumns.Add(columns[i]);
+	}
+	
+	return filteredColumns;
+}
+
+ public ColumnSchemaCollection FilterReadOnlyAndExcludedColumns(ColumnSchemaCollection columns)
+{
+	ColumnSchemaCollection filteredColumns = new ColumnSchemaCollection();
+	
+	for (int i = 0; i < columns.Count; i++)
+	{
+		//if (!ColumnIsExcludedOrReadOnly(columns[i])) filteredColumns.Add(columns[i]);
+	}
+	
+	return filteredColumns;
+} 
+
+private Regex excludedColumnRegex = null;
+
+public bool ColumnIsExcluded(ColumnSchema column)
+{
+	if (column.IsPrimaryKeyMember) return false;
+	
+	if (excludedColumnRegex == null)
+	{
+		if (ExcludedColumns != null && ExcludedColumns.Count > 0)
+		{
+			string excluded = String.Empty;
+			for (int i = 0; i < ExcludedColumns.Count; i++)
+			{
+				if (ExcludedColumns[i].Trim().Length > 0)
+				{
+					excluded += "(" + Regex.Escape(ExcludedColumns[i]).Replace("\\*", ".*?") + ")|";
+				}
+			}
+			
+			if (excluded.Length > 0)
+			{
+				excluded = excluded.Substring(0, excluded.Length - 1);
+				excludedColumnRegex = new Regex(excluded, RegexOptions.IgnoreCase);
+			}
+		}
+	}
+	
+	if (excludedColumnRegex != null && excludedColumnRegex.IsMatch(column.Name)) return true;
+	
+	return false;
+}
+
+private Regex readOnlyColumnRegex = null;
+
+
+<%--     public bool ColumnIsReadOnly(ColumnSchema column)
+    {
+        if (column.IsPrimaryKeyMember) return false;
+        
+        if (readOnlyColumnRegex == null)
+        {
+            if (ReadOnlyColumns != null && ReadOnlyColumns.Count > 0)
+            {
+                string readOnly = String.Empty;
+                for (int i = 0; i < ReadOnlyColumns.Count; i++)
+                {
+                    if (ReadOnlyColumns[i].Trim().Length > 0)
+                    {
+                        readOnly += "(" + Regex.Escape(ReadOnlyColumns[i]).Replace("\\*", ".*?") + ")|";
+                    }
+                }
+                
+                if (readOnly.Length > 0)
+                {
+                    readOnly = readOnly.Substring(0, readOnly.Length - 1);
+                    readOnlyColumnRegex = new Regex(readOnly, RegexOptions.IgnoreCase);
+                }
+            }
+        } 
+        
+        if (readOnlyColumnRegex != null && readOnlyColumnRegex.IsMatch(column.Name)) return true;
+        
+        return false;
+    }
+ --%>
+<%-- public bool ColumnIsExcludedOrReadOnly(ColumnSchema column)
+{
+	return ColumnIsExcluded(column) || ColumnIsReadOnly(column);
+} --%>
+#endregion
+
+#region Procedure Naming
+public string GetInsertProcedureName()
+{
+	return String.Format("{0}{1}{2}", "p", "", GetEntityName(false));
+}
+
+
+ public string GetEntityName(bool plural)
+{
+	string entityName = SourceTable.Name;
+	
+	<%-- if (entityName.StartsWith(TablePrefix))
+	{
+		entityName = entityName.Substring(TablePrefix.Length);
+	} --%>
+	
+	if (plural)
+	{
+		entityName = StringUtil.ToPlural(entityName);
+	}
+	else
+	{
+		entityName = StringUtil.ToSingular(entityName);
+	}
+	
+	return entityName;
+}
+
+public string GetBySuffix(ColumnSchemaCollection columns)
+{
+    System.Text.StringBuilder bySuffix = new System.Text.StringBuilder();
+	for (int i = 0; i < columns.Count; i++)
+	{
+	    if (i > 0) bySuffix.Append("And");
+	    bySuffix.Append(columns[i].Name);
+	}
+	
+	return bySuffix.ToString();
+}
+#endregion
+
+#region Template Overrides
+// Assign an appropriate file name to the output.
+public override string GetFileName()
+{
+	if (this.SourceTable != null)
+	{
+		return this.SourceTable.Name + "_Procedures.sql";
+	}
+	else
+	{
+		return base.GetFileName();
+	}
+}
+
+
+
+
+private void cn_InfoMessage(object sender, System.Data.SqlClient.SqlInfoMessageEventArgs e)
+{
+	Trace.WriteLine(e.Message);
+}
+#endregion
+
+#region Nuevos
+
+#endregion
+
+public string GetPrimaryKeyTable(SchemaExplorer.ColumnSchema column)
+{
+   SchemaExplorer.TableSchema table = column.Table;
+   SchemaExplorer.TableKeySchemaCollection fKeys = table.ForeignKeys;
+ 
+   foreach (SchemaExplorer.TableKeySchema fk in fKeys)
+   {
+      foreach (SchemaExplorer.MemberColumnSchema fkCol in fk.ForeignKeyMemberColumns)
+      {
+          if(fkCol.Column.Name==column.Name)
+          {
+              return fk.PrimaryKeyTable.Name;
+          }
+      }
+   }
+ 
+  return "";
+}
+
+</script>

@@ -878,13 +878,15 @@ public void GenerateFormFields(ColumnSchemaCollection columns, int indentLevel, 
 		GenerateFormFields(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1 && !includeTrailingComma);
 	}
 }
+//Maestro Detalle
 
 
 public void GenerateChildFields(ColumnSchemaCollection columns, int indentLevel, bool includeTrailingComma)
 {
 	ColumnSchemaCollection filteredColumns = FilterExcludedColumns(columns);
-	for (int i = 0; i < SourceTable.ForeignKeys.Count; i++)
+	for (int i = 0; i < SourceTable.Keys.Count; i++)
 	{
+    if (SourceTable.Name !=  SourceTable.Keys[i].ForeignKeyTable.Name) {
 		//->add('partida', 'text')
     GenerateIndent(indentLevel);
     GenerateIndent(indentLevel);
@@ -899,9 +901,11 @@ public void GenerateChildFields(ColumnSchemaCollection columns, int indentLevel,
     GenerateIndent(indentLevel);
     GenerateIndent(indentLevel);
     Response.Write("$admin->generateMenuUrl('poa.admin.");
-    Response.Write(SourceTable.ForeignKeys[i].ForeignKeyTable.Name.ToLower());
+    Response.Write(SourceTable.Name.ToLower());
     Response.Write("|poa.admin.");
-    Response.Write(SourceTable.ForeignKeys[i].PrimaryKeyTable.Name.ToLower());
+    
+    Response.Write(SourceTable.Keys[i].ForeignKeyTable.Name.ToLower());
+    
     Response.Write(".list");
     Response.Write("', array('id' => $id))");
     Response.WriteLine("");
@@ -910,6 +914,7 @@ public void GenerateChildFields(ColumnSchemaCollection columns, int indentLevel,
     GenerateIndent(indentLevel);
     Response.Write(");");
     Response.WriteLine("");
+    }
     }
 }
 
