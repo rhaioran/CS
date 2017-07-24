@@ -157,8 +157,14 @@ class  <%=SourceTable.Name%>Admin  extends AbstractAdmin
         <% GenerateColumnsShowFields(SourceTable.NonPrimaryKeyColumns, 1); %>          
        ;
     }
-    
-
+     // Fields to be shown on show Validate
+    public function validate(ErrorElement $errorElement, $object)
+        {
+            $errorElement
+            <% GenerateValidate(SourceTable.NonPrimaryKeyColumns, 1); %>
+            
+            ;
+        }
     
     
 }
@@ -898,7 +904,7 @@ public void GenerateChildFields(ColumnSchemaCollection columns, int indentLevel,
     GenerateIndent(indentLevel);
     Response.Write(");");
     Response.WriteLine("");
-	}
+    }
 }
 
 
@@ -1012,6 +1018,60 @@ public void GenerateColumnListField(ColumnSchema column, int indentLevel, bool i
     Response.Write(column.Description);
     Response.Write("'))");
     Response.WriteLine("");
+}
+//2017 function  validate
+
+public void GenerateValidate(ColumnSchemaCollection columns, int indentLevel)
+{
+	ColumnSchemaCollection filteredColumns = FilterExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		GenerateValidateField(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1);
+	}
+}
+
+public void GenerateValidateField(ColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+	GenerateIndent(indentLevel);
+    GenerateIndent(indentLevel);
+    GenerateIndent(indentLevel);
+    Response.Write("->with('");
+    Response.Write(column.Name);	  
+    Response.Write("')");
+    Response.WriteLine("");
+    GenerateIndent(indentLevel);
+    GenerateIndent(indentLevel);
+    GenerateIndent(indentLevel);
+    Response.Write("//->assertNotBlank()");
+    Response.WriteLine("");
+    GenerateIndent(indentLevel);
+    GenerateIndent(indentLevel);
+    GenerateIndent(indentLevel);
+    Response.Write("//->assertLength(array('min' => 1))");  
+    Response.WriteLine("");
+    GenerateIndent(indentLevel);
+    GenerateIndent(indentLevel);
+    GenerateIndent(indentLevel);
+    Response.Write("//->assertRegex(array('pattern' => '/^[a-z]+$/i'))"); 
+    Response.WriteLine("");
+    GenerateIndent(indentLevel);
+    GenerateIndent(indentLevel);
+    GenerateIndent(indentLevel);
+    Response.Write("//->assertRegex(array('pattern' => '/^[0-9]+$/i'))");
+    Response.WriteLine("");
+    GenerateIndent(indentLevel);
+    GenerateIndent(indentLevel);
+    GenerateIndent(indentLevel);
+    Response.Write("//->assertLength(array('max' => ");
+    Response.Write(column.Size);
+    Response.Write("))");
+    Response.WriteLine("");
+    GenerateIndent(indentLevel);
+    GenerateIndent(indentLevel);
+    GenerateIndent(indentLevel);
+    Response.Write("->end()");
+    Response.WriteLine("");
+    
 }
 
 
