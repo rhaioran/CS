@@ -1,5 +1,5 @@
 <%------------------------------------------------------------------------------------------
-* Author: Victor Lude?o Blanco 
+* Author: Victor Lude?o Blanco & German Alberto Saba Carrasco
 * Description: This template will generate standard CRUD stored procedures for a given 
 *   database table.
 ------------------------------------------------------------------------------------------%>
